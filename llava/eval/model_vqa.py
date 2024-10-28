@@ -135,16 +135,16 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
     """
 
     question1_prompt = """
-        <image>\n Yes or No: [Lesion Existence] Does a lesion exist in this brain? .
+        [Lesion Existence] Does a lesion exist in this brain? Specify the slice number.
         [/INST]
     """
 
     question2_prompt = """
-        <image>\n level1, level2, level3 or level4: [Lesion Grading] What is the severity level of brain injury in this ADC?
+        [Lesion Grading] What is the severity level of brain injury in this ADC? Answer with level1, level2, level3 or level4.
         [/INST]
     """
     question3_prompt = """
-        <image>\n GE 1.5T or SIEMENS 3T: [Scanner Type] What is the Scanner Type of this ADC?
+        [Scanner Type] What is the Scanner Type of this ADC? Answer with GE 1.5T or SIEMENS 3T.
         [/INST]
     """
     question_list = [question1_prompt, question2_prompt, question3_prompt]
@@ -156,12 +156,18 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
         real_img_path = img_path[start_frm: end_frm]
         for idx, cur_img_path in enumerate(real_img_path):
             # cur_img_path = img_path[9]
+            slice_idx = cur_img_path.split('/')[-1].split('.')[0]
+            prompt_list.append(f'{slice_idx}: <image> \n')
             raw_image = Image.open(cur_img_path).convert("RGB")
             img_list.append(raw_image)
-        # image_tensor = process_images(img_list, image_processor, vqa_model.config)[0]
-        image_tensor = process_images(img_list, image_processor, vqa_model.config)
 
-        prompt_list = [prompt1] + [cur_ques]
+        image_tensor = process_images(img_list, image_processor, vqa_model.config)
+        image_tensor = [cur_tensor.unsqueeze(0).half().cuda() for cur_tensor in image_tensor]
+
+        # prompt_list = [prompt1] + prompt_list + [cur_ques]
+        # 'slice 7': <image>, 'slice 8' : <image>
+        prompt_list = [prompt1] + ['<image>'] + [cur_ques]
+
         prompt = ''.join(''.join(prompt_list).split('\n'))
         input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
@@ -170,7 +176,7 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
             output_ids = vqa_model.generate(
                 input_ids,
                 # images=image_tensor.unsqueeze(0).half().cuda(),
-                images=image_tensor.half().cuda(),
+                images=image_tensor,
                 do_sample=True if args.temperature > 0 else False,
                 temperature=args.temperature,
                 top_p=args.top_p,
@@ -184,6 +190,8 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
         outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
         ans_name = f'ans{cur_idx}'
         answer_dict[ans_name] = outputs
+        answer_dict['range'] = [start_frm, end_frm]
+    # import pdb; pdb.set_trace()
     return answer_dict
 
 
@@ -192,6 +200,10 @@ def eval_model_HIEVQA(args):
     set_seed(0)
     # Model
     disable_torch_init()
+
+    model_path = os.path.expanduser(args.model_path)
+    model_name = get_model_name_from_path(model_path)
+    tokenizer, vqa_model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
     
     dataset_path = args.image_folder
     mgh_dir = os.path.join(dataset_path, 'MGH')
@@ -202,18 +214,17 @@ def eval_model_HIEVQA(args):
         cur_split_answer = {}
         cur_answer_file = os.path.join(
             args.answers_file, 
-            f'{data_split}_v1.json')
+            # f'{data_split}_v1.json'
+            f'{data_split}_v4.json'
+            )
         
         for img_dir_idx, img_dir in enumerate(tqdm(img_dirs)):
             if not img_dir.startswith('MGHNICU'):
                 continue
-            model_path = os.path.expanduser(args.model_path)
-            model_name = get_model_name_from_path(model_path)
-            tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
-
+            
             answer = test_single_data(
                 args=args,
-                vqa_model=model,
+                vqa_model=vqa_model,
                 tokenizer=tokenizer,
                 image_processor=image_processor,
                 img_dir=os.path.join(cur_split_data_dir, img_dir)
@@ -223,8 +234,8 @@ def eval_model_HIEVQA(args):
             if img_dir_idx % 2 == 0:
                 jsondump(cur_answer_file, cur_split_answer)
             
-            del model
-            torch.cuda.empty_cache()
+            # del model
+            # torch.cuda.empty_cache()
             
         jsondump(cur_answer_file, cur_split_answer)
 

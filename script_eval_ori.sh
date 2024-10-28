@@ -8,4 +8,5 @@ PYTHONPATH=. python llava/eval/model_vqa.py \
     --question-file $QUESTION \
     --image-folder $IMG_DIR \
     --answers-file $ANSWER_PATH \
-    --temperature 0.0
+    --temperature 0.5
+    # --temperature 0.0

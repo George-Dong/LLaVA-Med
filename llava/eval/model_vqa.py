@@ -103,63 +103,55 @@ def jsondump(path, this_dic):
     f.close()
 
 def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
-    img_path_list = sorted([item for item in os.listdir(img_dir) if not item.startswith('thumb') and item.endswith('png') ])
-    img_path = []
-    for idx, cur_path in enumerate(img_path_list):
-        cur_img = f'slice_{str(idx)}.png'
-        assert cur_img in img_path_list
-        img_path.append(os.path.join(img_dir, cur_img))
 
-    # img_path = sorted([os.path.join(img_dir, item) for item in img_path_list if not item.startswith('thumb') and item.endswith('png')])
-
-    start_frm = int(len(img_path) * 0.33)
-    end_frm = int(len(img_path) * 0.67)
+    thumb_short_img = os.path.join(img_dir, 'thumb_short.png')
+    assert os.path.exists(thumb_short_img), '[Error]: thumb_short doesnt exist!'
 
     prompt1 = """
-        [INST] ###Human: Suppose you are an expert in detecting Neonatal Brain Injury for Hypoxic Ischemic Encephalopathy, 
+        [INST] Suppose you are an expert in detecting Neonatal Brain Injury for Hypoxic Ischemic Encephalopathy, 
         and you are allowed to use any necessary information on the Internet for you to answer questions. 
         For now I am giving you a set of MRI scaning slices of neonatal brains, 
         these slices are marked with coressponding slice labels, like 'Slice 10' and 'Slice 11'. 
         The label means the slice depth of this slice, 
         for example, 'Slice 11' is in the middle layer between 'Slice 10' and 'Slice 12'. 
-        You need to answer questions in the order they are given, and output in the predefined rules.
-        Rules:
-        1. For [Lesion Existence] questions, you need to decide the existence of the leison, and answer with 'yes', Or 'no'.
-        2. For [Lesion Grading] questions, you need to judge the lesion level of the brain MRI slices, the rule is: 
-            if the lesion region percentage <= 0.01, answer with 'level1',
-            if 0.01< lesion region percentage <=0.05, answer with 'level2',
-            if 0.05< lesion region percentage <=0.5, answer with 'level3',
-            if 0.5< lesion region percentage <=1.0, answer with 'level4'.
-        3. For [Scanner Type] questions, you need to decide the given MRI slice is scanned by GE 1.5T or SIEMENS 3T, and answer with '1.5T' or '3T'
-        
+        They are presented in thumbnail format. 
     """
 
     question1_prompt = """
+        You need to answer questions in the order they are given, and output in the predefined rules.
+        For [Lesion Existence] questions, you need to decide the existence of the leison, and answer with 'yes', Or 'no'.
         [Lesion Existence] Does a lesion exist in this brain? Specify the slice number.
         [/INST]
     """
 
     question2_prompt = """
+        You need to answer questions in the order they are given, and output in the predefined rules.
+        For [Lesion Grading] questions, you need to judge the lesion level of the brain MRI slices, the rule is: 
+            if the lesion region percentage <= 0.01, answer with 'level1',
+            if 0.01< lesion region percentage <=0.05, answer with 'level2',
+            if 0.05< lesion region percentage <=0.5, answer with 'level3',
+            if 0.5< lesion region percentage <=1.0, answer with 'level4'.
         [Lesion Grading] What is the severity level of brain injury in this ADC? Answer with level1, level2, level3 or level4.
         [/INST]
     """
     question3_prompt = """
-        [Scanner Type] What is the Scanner Type of this ADC? Answer with GE 1.5T or SIEMENS 3T.
+        You need to answer questions in the order they are given, and output in the predefined rules.
+        For [Scanner Type] questions, you need to decide the given MRI slice is scanned by GE 1.5T or SIEMENS 3T, and answer with '1.5T' or '3T'
+        [Scanner Type] What is the Scanner Type of this ADC? 
         [/INST]
     """
-    question_list = [question1_prompt, question2_prompt, question3_prompt]
+    question_list = [
+        # question1_prompt, 
+        question2_prompt, 
+        question3_prompt]
     answer_dict = {}
     for cur_idx, cur_ques in enumerate(question_list):
         img_list = []
         prompt_list = []
 
-        real_img_path = img_path[start_frm: end_frm]
-        for idx, cur_img_path in enumerate(real_img_path):
-            # cur_img_path = img_path[9]
-            slice_idx = cur_img_path.split('/')[-1].split('.')[0]
-            prompt_list.append(f'{slice_idx}: <image> \n')
-            raw_image = Image.open(cur_img_path).convert("RGB")
-            img_list.append(raw_image)
+        raw_image = Image.open(thumb_short_img).convert("RGB")
+        img_list.append(raw_image)
+        prompt_list.append(f'thumbnail: <image> \n')
 
         image_tensor = process_images(img_list, image_processor, vqa_model.config)
         image_tensor = [cur_tensor.unsqueeze(0).half().cuda() for cur_tensor in image_tensor]
@@ -171,26 +163,35 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
         prompt = ''.join(''.join(prompt_list).split('\n'))
         input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
-        with torch.inference_mode():
-            # import pdb; pdb.set_trace()
-            output_ids = vqa_model.generate(
-                input_ids,
-                # images=image_tensor.unsqueeze(0).half().cuda(),
-                images=image_tensor,
-                do_sample=True if args.temperature > 0 else False,
-                temperature=args.temperature,
-                top_p=args.top_p,
-                num_beams=args.num_beams,
-                # no_repeat_ngram_size=3,
-                max_new_tokens=1024,
-                # use_cache=True,
-                use_cache=False
-                )
+        for _ in range(20):
+            try: 
+                with torch.inference_mode():
+                    # import pdb; pdb.set_trace()
+                    output_ids = vqa_model.generate(
+                        input_ids,
+                        # images=image_tensor.unsqueeze(0).half().cuda(),
+                        images=image_tensor,
+                        do_sample=True if args.temperature > 0 else False,
+                        temperature=args.temperature,
+                        top_p=args.top_p,
+                        num_beams=args.num_beams,
+                        # no_repeat_ngram_size=3,
+                        max_new_tokens=1024,
+                        # use_cache=True,
+                        use_cache=False
+                        )
 
-        outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+                outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+                # import pdb; pdb.set_trace()
+                if outputs == '':
+                    raise ValueError
+            except ValueError as e:
+                print("[Warning] Answer not accept! Regenerate again!")
+                continue
+        print(outputs)
         ans_name = f'ans{cur_idx}'
         answer_dict[ans_name] = outputs
-        answer_dict['range'] = [start_frm, end_frm]
+        # answer_dict['range'] = [start_frm, end_frm]
     # import pdb; pdb.set_trace()
     return answer_dict
 
@@ -215,7 +216,8 @@ def eval_model_HIEVQA(args):
         cur_answer_file = os.path.join(
             args.answers_file, 
             # f'{data_split}_v1.json'
-            f'{data_split}_v4.json'
+            # f'{data_split}_v_thumbnail.json'
+            f'{data_split}_debug.json'
             )
         
         for img_dir_idx, img_dir in enumerate(tqdm(img_dirs)):

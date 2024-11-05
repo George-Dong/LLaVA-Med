@@ -23,7 +23,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
         )
     else:
         kwargs['torch_dtype'] = torch.float16
-    
+
     if 'llava' in model_name.lower():
         # Load LLaVA model
             if 'mistral' in model_name.lower():

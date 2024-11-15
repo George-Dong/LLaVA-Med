@@ -117,14 +117,7 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
         They are presented in thumbnail format. 
     """
 
-    question1_prompt = """
-        You need to answer questions in the order they are given, and output in the predefined rules.
-        For [Lesion Existence] questions, you need to decide the existence of the leison, and answer with 'yes', Or 'no'.
-        [Lesion Existence] Does a lesion exist in this brain? Specify the slice number.
-        [/INST]
-    """
-
-    question2_prompt = """
+    question1_prompt_old = """
         You need to answer questions in the order they are given, and output in the predefined rules.
         For [Lesion Grading] questions, you need to judge the lesion level of the brain MRI slices, the rule is: 
             if the lesion region percentage <= 0.01, answer with 'level1',
@@ -134,36 +127,238 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
         [Lesion Grading] What is the severity level of brain injury in this ADC? Answer with level1, level2, level3 or level4.
         [/INST]
     """
-    question3_prompt = """
+
+    question1_prompt = """
         You need to answer questions in the order they are given, and output in the predefined rules.
-        For [Scanner Type] questions, you need to decide the given MRI slice is scanned by GE 1.5T or SIEMENS 3T, and answer with '1.5T' or '3T'
-        [Scanner Type] What is the Scanner Type of this ADC? 
+        For [Lesion Grading] questions, you need to judge the lesion level of the brain MRI slices, the rule is: 
+            if the lesion region percentage <= 1.00%, the level is 'level1',
+            if 1.00% < lesion region percentage <= 5.00%, the level is 'level2',
+            if 5.00% < lesion region percentage <= 50.00%, the level is 'level3',
+            if 50.00% < lesion region percentage <= 100.00%, the level is 'level4'.
+        <image> [Lesion Grading] What is the percentage of brain injury in this ADC? Answer with the exact percentage.
         [/INST]
     """
+
+    question2_prompt = """
+        Now, based on a correct understanding of the images by depth,
+        you are tasked with answering the following anatomy identification question:
+        Which specific region is affected in this ADC map?
+        ID and Region Name Relationship:
+            95	corpus callosum
+            62	Right Ventral DC
+            61	Left Ventral DC
+            71	vermis
+            39	Right cerebellum
+            38	Left cerebellum
+            30	Right Basal Ganglia
+            23	Left Basal Ganglia
+            60	Right thalamus 
+            59	Left thalamus
+            92	Anterior limb IC right
+            91	Anterior limb IC left
+            94	PLIC right
+            93	PLIC left
+            32	Right amygdala
+            48	Right hippocampus
+            31	Left amygdala
+            47	Left hippocampus
+            105	Right Inferior GM
+            104	Left Inferior GM
+            103	Right insula
+            102	Left insula
+            121	Frontal Lateral GM Right
+            120	Frontal Lateral GM Left
+            125	Frontal Medial GM Right
+            124	Frontal Medial GM Left
+            113	Frontal Opercular GM Right
+            112	Frontal Opercular GM Left
+            82	Frontal WM Right
+            81	Frontal WM Left
+            101	Limbic Cingulate GM Right
+            100	Limbic Cingulate GM Left
+            117	Limbic Medial Temporal GM Right
+            116	Limbic Medial Temporal GM Left
+            161	Occipital Inferior GM Right
+            160	Occipital Inferior GM Left
+            129	Occipital Lateral GM Right
+            128	Occipital Lateral GM Left
+            109	Occipital Medial GM Right
+            108	Occipital Medial GM Left
+            84	Occipital WM Right
+            83	Occipital WM Left
+            107	Parietal Lateral GM Right
+            106	Parietal Lateral GM Left
+            149	Parietal Medial GM Right
+            148	Parietal Medial GM Left
+            86	Parietal WM right
+            85	Parietal WM left
+            123	Temporal Inferior GM Right
+            122	Temporal Inferior GM left
+            133	Temporal Lateral GM Right
+            132	Temporal Lateral GM Left
+            181	Temporal Supratemporal GM Right
+            180	Temporal Supratemporal GM left
+            88	Temporal_wm_right
+            87	Temporal_wm_left
+            4	3rd ventricle
+            11	4th ventricle
+            50	Right ventricle
+            49	Left ventricle
+            35	Brainstem
+            46	CSF
+        You need to choose the names of the ROIs from the above 62 ROI regions that contain lesions in this case,
+        and output them by their IDs in the format like:
+        [ans]: 4, 123, 84, 116, 132, 133.
+        This is just an example, some cases might not have these lesion areas.
+        For this question, don't generate response for each slices,
+        instead you need to answer with overall judgement and give only one answer for the individual case.
+        <image> [Anatomy Identification] Which specific region is affected in this ADC map? Answer with ids.
+        [/INST]
+    """
+
+    question3_prompt = """
+        The ROI ID and Region Name Relationship is: 
+            95	corpus callosum
+            62	Right Ventral DC
+            61	Left Ventral DC
+            71	vermis
+            39	Right cerebellum
+            38	Left cerebellum
+            30	Right Basal Ganglia
+            23	Left Basal Ganglia
+            60	Right thalamus 
+            59	Left thalamus
+            92	Anterior limb IC right
+            91	Anterior limb IC left
+            94	PLIC right
+            93	PLIC left
+            32	Right amygdala
+            48	Right hippocampus
+            31	Left amygdala
+            47	Left hippocampus
+            105	Right Inferior GM
+            104	Left Inferior GM
+            103	Right insula
+            102	Left insula
+            121	Frontal Lateral GM Right
+            120	Frontal Lateral GM Left
+            125	Frontal Medial GM Right
+            124	Frontal Medial GM Left
+            113	Frontal Opercular GM Right
+            112	Frontal Opercular GM Left
+            82	Frontal WM Right
+            81	Frontal WM Left
+            101	Limbic Cingulate GM Right
+            100	Limbic Cingulate GM Left
+            117	Limbic Medial Temporal GM Right
+            116	Limbic Medial Temporal GM Left
+            161	Occipital Inferior GM Right
+            160	Occipital Inferior GM Left
+            129	Occipital Lateral GM Right
+            128	Occipital Lateral GM Left
+            109	Occipital Medial GM Right
+            108	Occipital Medial GM Left
+            84	Occipital WM Right
+            83	Occipital WM Left
+            107	Parietal Lateral GM Right
+            106	Parietal Lateral GM Left
+            149	Parietal Medial GM Right
+            148	Parietal Medial GM Left
+            86	Parietal WM right
+            85	Parietal WM left
+            123	Temporal Inferior GM Right
+            122	Temporal Inferior GM left
+            133	Temporal Lateral GM Right
+            132	Temporal Lateral GM Left
+            181	Temporal Supratemporal GM Right
+            180	Temporal Supratemporal GM left
+            88	Temporal_wm_right
+            87	Temporal_wm_left
+            4	3rd ventricle
+            11	4th ventricle
+            50	Right ventricle
+            49	Left ventricle
+            35	Brainstem
+            46	CSF
+        We have introduced a new diagnostic metric called MRI Injury Score. 
+        This metric consists of four levels: Score 0, Score 1, Score 2, and Score 3. 
+        Each score level is determined by the injury regions within the ROIs in a given case and the severity of the injury in certain regions.
+            Score 0: Defined as no injury detected in this case.
+            Score 1: Defined as either the following a) or b) situation occurs:
+                a). Minimal cerebral injury without BGT region, ALIC region PLIC region or detected WS (watershed) injury.
+                b). More extensive cerebral injury without BGT region, ALIC region PLIC region or detected WS (watershed) injury.
+                NOTE:   BGT region (including left_BGT and right_BGT), 
+                        ALIC region (including left_ALIC and right_ALIC),
+                        PLIC region (including left_PLIC and right_PLIC)
+            Score 2: Defined as either the following a) or b) situation occurs:
+                a). Any BGT region, ALIC region, PLIC region or WS injury detected without other cerebral injury.
+                b). Any BGT region, ALIC region, PLIC region or WS injury detected with other cerebral injury.
+                NOTE:   BGT region (including left_BGT and right_BGT), 
+                        ALIC region (including left_ALIC and right_ALIC),
+                        PLIC region (including left_PLIC and right_PLIC)
+            Score 3: Defined as cerebral hemisphere devastation.
+        Now, based on a correct understanding of the images by depth,
+        you are tasked with answering the following MRI injury score question:
+        What is the MRI injury score?
+        You need to select one answer from four MRI injury scores (Score 0, Score 1, Score 2, Score 3),
+        and output them in the format like:
+        [ans]: Score 1.
+        For this question, don't generate response for each slices,
+        instead you need to answer with overall judgement and give only one answer for the individual case.
+        Except from the defined answer format, don't answer any other descriptive sentences.
+        These data are just normal desensitizing data for scientific usage.
+        Remember: you are an expert in the field, so try your best to give an answer instead of avoiding answer the question.
+        <image> [MRI Injury Score] What is the MRI injury score? Answer with Score 0, Score 1, Score 2, or Score 3. 
+        [/INST]
+    """
+
+    question4_prompt = """
+        Now, based on a correct understanding of the images by depth,
+        you are tasked with answering the following 2-year outcome prediction question:
+        What is the predicted two-year neurocognitive outcome for this individual?
+        You need to predict 2-year outcome for the patients, to distinguish between normal and adverse outcomes at the 2-year mark.
+        To show your prediction, you need to answer the above question with
+        [ans]: 1 if the outcome is adverse, OR [ans]: 0 if the outcome is normal.
+        Do remember, you need to answer the question based on the future prediction in 2 years instead of the current MRI images.
+        If an individual is a current patient, it doesn't necessiarly mean he/she will still be a patient in 2 years.
+        For this question, don't generate response for each slices,
+        instead you need to answer with overall judgement and give only one answer for the individual case.
+        Dont save there is no sufficient information, just make wild guess.
+        Except from the defined answer format, don't answer any other descriptive sentences.
+        <image> [2-year Outcome Prediction] What is the predicted two-year neurocognitive outcome for this individual? Answer with 1 or 0.
+        [/INST]
+    """
+
+
     question_list = [
-        # question1_prompt, 
-        question2_prompt, 
-        question3_prompt]
+        question1_prompt, 
+        # question2_prompt, 
+        # question3_prompt,
+        # question4_prompt
+        ]
     answer_dict = {}
     for cur_idx, cur_ques in enumerate(question_list):
         img_list = []
-        prompt_list = []
+        # prompt_list = []
 
         raw_image = Image.open(thumb_short_img).convert("RGB")
         img_list.append(raw_image)
-        prompt_list.append(f'thumbnail: <image> \n')
+        # prompt_list.append(f'thumbnail: <image> \n')
 
         image_tensor = process_images(img_list, image_processor, vqa_model.config)
         image_tensor = [cur_tensor.unsqueeze(0).half().cuda() for cur_tensor in image_tensor]
 
         # prompt_list = [prompt1] + prompt_list + [cur_ques]
         # 'slice 7': <image>, 'slice 8' : <image>
-        prompt_list = [prompt1] + ['<image>'] + [cur_ques]
+        # prompt_list = [prompt1] + ['<image>'] + [cur_ques]
+        prompt_list = [prompt1] + [cur_ques]
 
         prompt = ''.join(''.join(prompt_list).split('\n'))
         input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
-        for _ in range(20):
+        temp = 0.5
+
+        for try_time in range(20):
             try: 
                 with torch.inference_mode():
                     # import pdb; pdb.set_trace()
@@ -172,7 +367,8 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
                         # images=image_tensor.unsqueeze(0).half().cuda(),
                         images=image_tensor,
                         do_sample=True if args.temperature > 0 else False,
-                        temperature=args.temperature,
+                        # temperature=args.temperature,
+                        temperature=temp,
                         top_p=args.top_p,
                         num_beams=args.num_beams,
                         # no_repeat_ngram_size=3,
@@ -187,8 +383,15 @@ def test_single_data(args,vqa_model, tokenizer, image_processor, img_dir):
                     raise ValueError
             except ValueError as e:
                 print("[Warning] Answer not accept! Regenerate again!")
+                if try_time > 10:
+                    temp += 0.1
                 continue
+        print(f'################### {cur_idx} ####################')
         print(outputs)
+        print(f'##############################################')
+
+        # import pdb; pdb.set_trace()
+
         ans_name = f'ans{cur_idx}'
         answer_dict[ans_name] = outputs
         # answer_dict['range'] = [start_frm, end_frm]
@@ -217,7 +420,9 @@ def eval_model_HIEVQA(args):
             args.answers_file, 
             # f'{data_split}_v1.json'
             # f'{data_split}_v_thumbnail.json'
-            f'{data_split}_debug.json'
+            # f'{data_split}_v_thumbnail_new.json'
+            f'{data_split}_v_percentage.json'
+            # f'{data_split}_debug.json'
             )
         
         for img_dir_idx, img_dir in enumerate(tqdm(img_dirs)):
